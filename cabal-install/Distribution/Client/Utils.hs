@@ -2,7 +2,7 @@
 
 module Distribution.Client.Utils ( MergeResult(..)
                                  , mergeBy, duplicates, duplicatesBy
-                                 , readMaybe
+                                 , readMaybe, exclusiveMaybe
                                  , inDir, withEnv, withEnvOverrides
                                  , logDirChange, withExtraPathEnv
                                  , determineNumJobs, numberOfProcessors
@@ -345,7 +345,7 @@ data ProgressPhase
     | ProgressCompleted
 
 progressMessage :: Verbosity -> ProgressPhase -> String -> IO ()
-progressMessage verbosity phase subject = do
+progressMessage verbosity phase subject =
     noticeNoWrap verbosity $ phaseStr ++ subject ++ "\n"
   where
     phaseStr = case phase of
@@ -356,3 +356,13 @@ progressMessage verbosity phase subject = do
         ProgressHaddock     -> "Haddock      "
         ProgressInstalling  -> "Installing   "
         ProgressCompleted   -> "Completed    "
+
+-- | Like 'Alternative' but makes sure that only one of
+-- two alternative is actually defined.
+--
+-- The outer 'Maybe' is 'Nothing' when both alternatives
+-- have values (hence exclusiveness)
+exclusiveMaybe :: Maybe a -> Maybe a -> Maybe (Maybe a)
+exclusiveMaybe a b = case (a, b) of
+  (Just _, Just _)  -> Nothing
+  _                 -> Just (a <|> b)

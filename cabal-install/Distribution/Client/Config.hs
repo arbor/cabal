@@ -1275,7 +1275,7 @@ ppHttpTransportSection def vals = ppSection "http-transport" (httpTransportFlags
 
 httpTransportFields :: [FieldDescr HttpTransportFlags]
 httpTransportFields =
-    [ simpleField "netrc"
+    [ simpleField "use-netrc"
         showUseNetrc                (Just `fmap` Text.parse)
         httpTransportFlagsUseNetrc (\v t -> t { httpTransportFlagsUseNetrc = v})
     ]

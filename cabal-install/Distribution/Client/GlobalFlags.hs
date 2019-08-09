@@ -29,6 +29,8 @@ import Distribution.Verbosity
          ( Verbosity )
 import Distribution.Simple.Utils
          ( info )
+import Distribution.Client.Utils
+         ( exclusiveMaybe )
 
 import Control.Concurrent
          ( MVar, newMVar, modifyMVar )
@@ -189,11 +191,11 @@ withRepoContext' verbosity remoteRepos localRepos
         transport <- case mTransport of
           Just tr -> return tr
           Nothing -> do
-            httpFlags <- case (httpTransport, httpTransportFlags) of
-                  (Just _, Just _) ->
-                    throwIO $ userError "http-transport: conflicting stanzas: 'http-transport' is defined twice"
-                  (Just t, _) -> return $ Just (emptyHttpTransportFlags t)
-                  (_, t) -> return t
+            let httpTransport' = emptyHttpTransportFlags <$> httpTransport
+            httpFlags <- case exclusiveMaybe httpTransport' httpTransportFlags of
+                  Nothing ->
+                    throwIO $ userError "configuration: 'http-transport' is defined twice"
+                  Just t -> return t
             configureTransport verbosity extraPaths httpFlags
         return (Just transport, transport)
 

@@ -116,7 +116,7 @@ import Distribution.Simple.InstallDirs
 import Distribution.Simple.Utils
          ( die', warn, notice, info, createDirectoryIfMissingVerbose )
 import Distribution.Client.Utils
-         ( determineNumJobs )
+         ( determineNumJobs, exclusiveMaybe )
 import Distribution.Utils.NubList
          ( fromNubList )
 import Distribution.Verbosity
@@ -954,10 +954,6 @@ mplusMaybeT ma mb = do
     Nothing -> mb
     Just x  -> return (Just x)
 
-lookupTransportFlags :: Maybe String -> Maybe HttpTransportFlags -> Maybe HttpTransportFlags
-lookupTransportFlags (Just httpTransport)  fs = find ((== httpTransport) . httpTransportFlagsName) fs
-lookupTransportFlags Nothing               _  = Nothing
-
 -------------------------------------------------
 -- Fetching and reading packages in the project
 --
@@ -992,10 +988,9 @@ fetchAndReadSourcePackages verbosity distDirLayout
         | ProjectPackageLocalTarball path <- pkgLocations ]
 
     pkgsRemoteTarball <- do
+      transportFlags <- liftIO selectedHttpTransportFlags
       getTransport <- delayInitSharedResource $
-                      configureTransport verbosity progPathExtra
-                                         ( lookupTransportFlags preferredHttpTransport
-                                           (flagToMaybe (projectConfigHttpTransportFlags projectConfigBuildOnly)))
+                      configureTransport verbosity progPathExtra transportFlags
       sequence
         [ fetchAndReadSourcePackageRemoteTarball verbosity distDirLayout
                                                  getTransport uri
@@ -1025,8 +1020,13 @@ fetchAndReadSourcePackages verbosity distDirLayout
     projectPackageLocal _ = []
 
     progPathExtra = fromNubList (projectConfigProgPathExtra projectConfigShared)
-    preferredHttpTransport =
-      flagToMaybe (projectConfigHttpTransport projectConfigBuildOnly)
+
+    selectedHttpTransportFlags =
+      let fldConf = flagToMaybe (projectConfigHttpTransport projectConfigBuildOnly)
+          secConf = flagToMaybe (projectConfigHttpTransportFlags projectConfigBuildOnly)
+      in case exclusiveMaybe (emptyHttpTransportFlags <$> fldConf) secConf of
+        Nothing -> throwIO $ userError "configuration: 'http-transport' is defined twice"
+        Just t  -> return t
 
 -- | A helper for 'fetchAndReadSourcePackages' to handle the case of
 -- 'ProjectPackageLocalDirectory' and 'ProjectPackageLocalCabalFile'.
