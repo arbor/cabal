@@ -52,6 +52,7 @@ import Distribution.Deprecated.ViewAsFieldDescr
 import Distribution.Client.Types
          ( RemoteRepo(..), Username(..), Password(..), emptyRemoteRepo
          , AllowOlder(..), AllowNewer(..), RelaxDeps(..), isRelaxDeps
+         , HttpTransportFlags(..)
          )
 import Distribution.Client.BuildReports.Types
          ( ReportLevel(..) )
@@ -240,23 +241,24 @@ instance Semigroup SavedConfig where
                                   _  -> b'
 
       combinedSavedGlobalFlags = GlobalFlags {
-        globalVersion           = combine globalVersion,
-        globalNumericVersion    = combine globalNumericVersion,
-        globalConfigFile        = combine globalConfigFile,
-        globalSandboxConfigFile = combine globalSandboxConfigFile,
-        globalConstraintsFile   = combine globalConstraintsFile,
-        globalRemoteRepos       = lastNonEmptyNL globalRemoteRepos,
-        globalCacheDir          = combine globalCacheDir,
-        globalLocalRepos        = lastNonEmptyNL globalLocalRepos,
-        globalLogsDir           = combine globalLogsDir,
-        globalWorldFile         = combine globalWorldFile,
-        globalRequireSandbox    = combine globalRequireSandbox,
-        globalIgnoreSandbox     = combine globalIgnoreSandbox,
-        globalIgnoreExpiry      = combine globalIgnoreExpiry,
-        globalHttpTransport     = combine globalHttpTransport,
-        globalNix               = combine globalNix,
-        globalStoreDir          = combine globalStoreDir,
-        globalProgPathExtra     = lastNonEmptyNL globalProgPathExtra
+        globalVersion             = combine globalVersion,
+        globalNumericVersion      = combine globalNumericVersion,
+        globalConfigFile          = combine globalConfigFile,
+        globalSandboxConfigFile   = combine globalSandboxConfigFile,
+        globalConstraintsFile     = combine globalConstraintsFile,
+        globalRemoteRepos         = lastNonEmptyNL globalRemoteRepos,
+        globalCacheDir            = combine globalCacheDir,
+        globalLocalRepos          = lastNonEmptyNL globalLocalRepos,
+        globalLogsDir             = combine globalLogsDir,
+        globalWorldFile           = combine globalWorldFile,
+        globalRequireSandbox      = combine globalRequireSandbox,
+        globalIgnoreSandbox       = combine globalIgnoreSandbox,
+        globalIgnoreExpiry        = combine globalIgnoreExpiry,
+        globalHttpTransport       = combine globalHttpTransport,
+        globalHttpTransportFlags  = lastNonEmptyNL globalHttpTransportFlags,
+        globalNix                 = combine globalNix,
+        globalStoreDir            = combine globalStoreDir,
+        globalProgPathExtra       = lastNonEmptyNL globalProgPathExtra
         }
         where
           combine        = combine'        savedGlobalFlags
@@ -1121,6 +1123,7 @@ parseConfig src initial = \str -> do
     isKnownSection (ParseUtils.Section _ "install-dirs" _ _)            = True
     isKnownSection (ParseUtils.Section _ "program-locations" _ _)       = True
     isKnownSection (ParseUtils.Section _ "program-default-options" _ _) = True
+    isKnownSection (ParseUtils.Section _ "http-transport" _ _)          = True
     isKnownSection _                                                    = False
 
     -- attempt to split fields that can represent lists of paths into actual lists
@@ -1256,6 +1259,21 @@ showConfigWithComments comment vals = Disp.render $
 -- | Fields for the 'install-dirs' sections.
 installDirsFields :: [FieldDescr (InstallDirs (Flag PathTemplate))]
 installDirsFields = map viewAsFieldDescr installDirsOptions
+
+ppHttpTransportSection :: HttpTransportFlags -> HttpTransportFlags -> Doc
+ppHttpTransportSection def vals = ppSection "http-transport" (httpTransportFlagsName vals)
+        httpTransportFields (Just def) vals
+
+httpTransportFields :: [FieldDescr HttpTransportFlags]
+httpTransportFields =
+    [ simpleField "netrc"
+        showUseNetrc                (Just `fmap` Text.parse)
+        httpTransportFlagsUseNetrc (\v t -> t { httpTransportFlagsUseNetrc = v})
+    ]
+  where
+    showUseNetrc Nothing      = mempty        -- default transport's setting
+    showUseNetrc (Just True)  = text "True"   -- user explicitly enabled it
+    showUseNetrc (Just False) = text "False"  -- user explicitly disabled it
 
 ppRemoteRepoSection :: RemoteRepo -> RemoteRepo -> Doc
 ppRemoteRepoSection def vals = ppSection "repository" (remoteRepoName vals)

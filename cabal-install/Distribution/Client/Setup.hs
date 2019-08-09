@@ -408,6 +408,14 @@ globalCommand commands = CommandUI {
          "Set a transport for http(s) requests. Accepts 'curl', 'wget', 'powershell', and 'plain-http'. (default: 'curl')"
          globalHttpTransport (\v flags -> flags { globalHttpTransport = v })
          (reqArgFlag "HttpTransport")
+
+      , option [] ["http-transport-config"]
+         "Set extra arguments for an http transport that is configured with 'http-transport' option."
+         globalHttpTransportFlags (\v flags -> flags { globalHttpTransportFlags = v })
+         -- TODO: FIX IT
+         undefined
+         -- (reqArg' "ARGS" (\x -> toNubList []) fromNubList)
+
       ,option [] ["nix"]
          "Nix integration: run commands through nix-shell if a 'shell.nix' file exists"
          globalNix (\v flags -> flags { globalNix = v })
@@ -2953,6 +2961,12 @@ parseRepo = do
     remoteRepoKeyThreshold   = 0,
     remoteRepoShouldTryHttps = False
   }
+
+-- parseHttpTransportFlags :: Parse.ReadP r HttpTransportFlags
+-- parseHttpTransportFlags = do
+--   name <- Parse.munch1 (\c -> isAlphaNum c || c `elem` "_-.")
+--   _    <- Parse.char ':'
+
 
 -- ------------------------------------------------------------
 -- * Helpers for Documentation
