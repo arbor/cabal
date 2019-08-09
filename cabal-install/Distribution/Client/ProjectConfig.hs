@@ -211,7 +211,7 @@ projectConfigWithSolverRepoContext verbosity
                     "projectConfigWithSolverRepoContext: projectConfigCacheDir")
                    projectConfigCacheDir)
       (flagToMaybe projectConfigHttpTransport)
-      (fromNubList projectConfigHttpTransportFlags)
+      (flagToMaybe projectConfigHttpTransportFlags)
       (flagToMaybe projectConfigIgnoreExpiry)
       (fromNubList projectConfigProgPathExtra)
 
@@ -316,7 +316,7 @@ resolveBuildTimeSettings verbosity
     buildSettingLocalRepos    = fromNubList projectConfigLocalRepos
     buildSettingCacheDir      = fromFlag    projectConfigCacheDir
     buildSettingHttpTransport = flagToMaybe projectConfigHttpTransport
-    buildSettingHttpTransportFlags = fromNubList projectConfigHttpTransportFlags
+    buildSettingHttpTransportFlags = flagToMaybe projectConfigHttpTransportFlags
     buildSettingIgnoreExpiry  = fromFlag    projectConfigIgnoreExpiry
     buildSettingReportPlanningFailure
                               = fromFlag projectConfigReportPlanningFailure
@@ -954,7 +954,7 @@ mplusMaybeT ma mb = do
     Nothing -> mb
     Just x  -> return (Just x)
 
-lookupTransportFlags :: Maybe String -> [HttpTransportFlags] -> Maybe HttpTransportFlags
+lookupTransportFlags :: Maybe String -> Maybe HttpTransportFlags -> Maybe HttpTransportFlags
 lookupTransportFlags (Just httpTransport)  fs = find ((== httpTransport) . httpTransportFlagsName) fs
 lookupTransportFlags Nothing               _  = Nothing
 
@@ -995,7 +995,7 @@ fetchAndReadSourcePackages verbosity distDirLayout
       getTransport <- delayInitSharedResource $
                       configureTransport verbosity progPathExtra
                                          ( lookupTransportFlags preferredHttpTransport
-                                           (fromNubList (projectConfigHttpTransportFlags projectConfigBuildOnly)))
+                                           (flagToMaybe (projectConfigHttpTransportFlags projectConfigBuildOnly)))
       sequence
         [ fetchAndReadSourcePackageRemoteTarball verbosity distDirLayout
                                                  getTransport uri

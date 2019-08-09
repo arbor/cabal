@@ -91,7 +91,7 @@ defaultGlobalFlags  = GlobalFlags {
     globalIgnoreSandbox       = Flag False,
     globalIgnoreExpiry        = Flag False,
     globalHttpTransport       = mempty,
-    globalHttpTransportFlags  = Flag (emptyHttpTransportFlags "curl"),
+    globalHttpTransportFlags  = mempty,
     globalNix                 = Flag False,
     globalStoreDir            = mempty,
     globalProgPathExtra       = mempty
@@ -152,10 +152,6 @@ withRepoContext verbosity globalFlags =
       (flagToMaybe (globalIgnoreExpiry        globalFlags))
       (fromNubList (globalProgPathExtra       globalFlags))
 
-lookupTransportFlags :: Maybe String -> Maybe HttpTransportFlags -> Maybe HttpTransportFlags
-lookupTransportFlags (Just httpTransport)  fs = find ((== httpTransport) . httpTransportFlagsName) fs
-lookupTransportFlags Nothing               _  = Nothing
-
 withRepoContext' :: Verbosity -> [RemoteRepo] -> [FilePath]
                  -> FilePath  -> Maybe String -> Maybe HttpTransportFlags -> Maybe Bool
                  -> [FilePath]
@@ -192,7 +188,13 @@ withRepoContext' verbosity remoteRepos localRepos
       modifyMVar transportRef $ \mTransport -> do
         transport <- case mTransport of
           Just tr -> return tr
-          Nothing -> configureTransport verbosity extraPaths (lookupTransportFlags httpTransport httpTransportFlags)
+          Nothing -> do
+            httpFlags <- case (httpTransport, httpTransportFlags) of
+                  (Just _, Just _) ->
+                    throwIO $ userError "http-transport: conflicting stanzas: 'http-transport' is defined twice"
+                  (Just t, _) -> return $ Just (emptyHttpTransportFlags t)
+                  (_, t) -> return t
+            configureTransport verbosity extraPaths httpFlags
         return (Just transport, transport)
 
     withSecureRepo :: Map Repo SecureRepo

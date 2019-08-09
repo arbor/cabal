@@ -1155,10 +1155,10 @@ parseConfig src initial = \str -> do
     parse = parseFields (configFieldDescriptions src
                       ++ deprecatedFieldDescriptions) initial
 
-    parseSections (ts, rs, h, i, u, g, p, a)
+    parseSections (_, rs, h, i, u, g, p, a)
                  (ParseUtils.Section _ "http-transport" name fs) = do
       ts' <- parseFields httpTransportFields (emptyHttpTransportFlags name) fs
-      return (ts', rs, h, i, u, g, p, a)
+      return (Flag ts', rs, h, i, u, g, p, a)
 
     parseSections (ts, rs, h, i, u, g, p, a)
                  (ParseUtils.Section _ "repository" name fs) = do
