@@ -59,7 +59,6 @@ import System.IO.Error
 import Distribution.Simple.Program
          ( Program, simpleProgram, ConfiguredProgram, programPath
          , ProgramInvocation(..), programInvocation
-         , programOverrideArgs, programPostConf
          , ProgramSearchPathEntry(..)
          , getProgramInvocationOutput )
 import Distribution.Simple.Program.Db
@@ -253,17 +252,11 @@ supportedTransports :: [(String, Maybe Program, Bool,
 supportedTransports =
     [ let prog = simpleProgram "curl" in
       ( "curl", Just prog, True
-      , \db htf -> curlTransport htf <$> lookupProgram prog db)
-
-    , let prog = (simpleProgram "curl") { programPostConf = post }
-          args = ["-n"]
-          post = \_ p -> return p { programOverrideArgs = args } in
-      ( "curlnetrc", Just prog, True
-      , \db htf -> curlTransport htf <$> lookupProgram prog db )
+      , \db httpTransportFlag -> curlTransport httpTransportFlag <$> lookupProgram prog db)
 
     , let prog = simpleProgram "wget" in
       ( "wget", Just prog, True
-      , \db _ -> wgetTransport <$> lookupProgram prog db )
+      , \db httpTransportFlag -> wgetTransport httpTransportFlag <$> lookupProgram prog db )
 
     , let prog = simpleProgram "powershell" in
       ( "powershell", Just prog, True
@@ -425,8 +418,8 @@ curlTransport httpTransportFlags prog =
             _             -> statusParseFail verbosity uri resp
 
 
-wgetTransport :: ConfiguredProgram -> HttpTransport
-wgetTransport prog =
+wgetTransport :: HttpTransportFlags -> ConfiguredProgram -> HttpTransport
+wgetTransport httpTransportFlags prog =
   HttpTransport gethttp posthttp posthttpfile puthttpfile True False
   where
     gethttp verbosity uri etag destPath reqHeaders =  do
@@ -447,11 +440,15 @@ wgetTransport prog =
         (code, etag') <- parseOutput verbosity uri resp
         return (code, etag')
       where
+        netrcFlags = case httpTransportFlagsUseNetrc httpTransportFlags of
+          Just False  -> ["--no-netrc"]
+          _           -> []
         args = [ "--output-document=" ++ destPath
                , "--user-agent=" ++ userAgent
                , "--tries=5"
                , "--timeout=15"
                , "--server-response" ]
+            ++ netrcFlags
             ++ concat
                [ ["--header", "If-None-Match: " ++ t]
                | t <- maybeToList etag ]
