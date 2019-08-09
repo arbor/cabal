@@ -319,6 +319,9 @@ data HttpTransportFlags =
 
 instance Binary HttpTransportFlags
 
+emptyHttpTransportFlags :: String -> HttpTransportFlags
+emptyHttpTransportFlags name = HttpTransportFlags name Nothing
+
 data RemoteRepo =
     RemoteRepo {
       remoteRepoName     :: String,
