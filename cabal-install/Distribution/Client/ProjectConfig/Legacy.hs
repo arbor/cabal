@@ -546,24 +546,24 @@ convertToLegacySharedConfig
     }
   where
     globalFlags = GlobalFlags {
-      globalVersion           = mempty,
-      globalNumericVersion    = mempty,
-      globalConfigFile        = projectConfigConfigFile,
-      globalSandboxConfigFile = mempty,
-      globalConstraintsFile   = mempty,
-      globalRemoteRepos       = projectConfigRemoteRepos,
-      globalCacheDir          = projectConfigCacheDir,
-      globalLocalRepos        = projectConfigLocalRepos,
-      globalLogsDir           = projectConfigLogsDir,
-      globalWorldFile         = mempty,
-      globalRequireSandbox    = mempty,
-      globalIgnoreSandbox     = mempty,
-      globalIgnoreExpiry      = projectConfigIgnoreExpiry,
-      globalHttpTransport     = projectConfigHttpTransport,
-      globalHttpTransportArgs = mempty,
-      globalNix               = mempty,
-      globalStoreDir          = projectConfigStoreDir,
-      globalProgPathExtra     = projectConfigProgPathExtra
+      globalVersion             = mempty,
+      globalNumericVersion      = mempty,
+      globalConfigFile          = projectConfigConfigFile,
+      globalSandboxConfigFile   = mempty,
+      globalConstraintsFile     = mempty,
+      globalRemoteRepos         = projectConfigRemoteRepos,
+      globalCacheDir            = projectConfigCacheDir,
+      globalLocalRepos          = projectConfigLocalRepos,
+      globalLogsDir             = projectConfigLogsDir,
+      globalWorldFile           = mempty,
+      globalRequireSandbox      = mempty,
+      globalIgnoreSandbox       = mempty,
+      globalIgnoreExpiry        = projectConfigIgnoreExpiry,
+      globalHttpTransport       = projectConfigHttpTransport,
+      globalHttpTransportFlags  = mempty,
+      globalNix                 = mempty,
+      globalStoreDir            = projectConfigStoreDir,
+      globalProgPathExtra       = projectConfigProgPathExtra
     }
 
     configFlags = mempty {
