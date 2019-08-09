@@ -151,7 +151,7 @@ data ProjectConfigBuildOnly
        projectConfigOfflineMode           :: Flag Bool,
        projectConfigKeepTempFiles         :: Flag Bool,
        projectConfigHttpTransport         :: Flag String,
-       projectConfigHttpTransportFlags    :: NubList HttpTransportFlags,
+       projectConfigHttpTransportFlags    :: Flag HttpTransportFlags,
        projectConfigIgnoreExpiry          :: Flag Bool,
        projectConfigCacheDir              :: Flag FilePath,
        projectConfigLogsDir               :: Flag FilePath,
@@ -441,7 +441,7 @@ data BuildTimeSettings
        buildSettingLocalRepos            :: [FilePath],
        buildSettingCacheDir              :: FilePath,
        buildSettingHttpTransport         :: Maybe String,
-       buildSettingHttpTransportFlags    :: [HttpTransportFlags],
+       buildSettingHttpTransportFlags    :: Maybe HttpTransportFlags,
        buildSettingIgnoreExpiry          :: Bool,
        buildSettingProgPathExtra         :: [FilePath]
      }

@@ -17,7 +17,8 @@ import Prelude ()
 import Distribution.Client.Compat.Prelude
 
 import Distribution.Client.Types
-         ( Repo(..), RemoteRepo(..), HttpTransportFlags(..) )
+         ( Repo(..), RemoteRepo(..)
+         , HttpTransportFlags(..), emptyHttpTransportFlags )
 import Distribution.Simple.Setup
          ( Flag(..), fromFlag, flagToMaybe )
 import Distribution.Utils.NubList
@@ -68,7 +69,7 @@ data GlobalFlags = GlobalFlags {
     globalIgnoreSandbox       :: Flag Bool,
     globalIgnoreExpiry        :: Flag Bool,    -- ^ Ignore security expiry dates
     globalHttpTransport       :: Flag String,
-    globalHttpTransportFlags  :: NubList HttpTransportFlags,
+    globalHttpTransportFlags  :: Flag HttpTransportFlags,
     globalNix                 :: Flag Bool,  -- ^ Integrate with Nix
     globalStoreDir            :: Flag FilePath,
     globalProgPathExtra       :: NubList FilePath -- ^ Extra program path used for packagedb lookups in a global context (i.e. for http transports)
@@ -90,7 +91,7 @@ defaultGlobalFlags  = GlobalFlags {
     globalIgnoreSandbox       = Flag False,
     globalIgnoreExpiry        = Flag False,
     globalHttpTransport       = mempty,
-    globalHttpTransportFlags = mempty,
+    globalHttpTransportFlags  = mempty,
     globalNix                 = Flag False,
     globalStoreDir            = mempty,
     globalProgPathExtra       = mempty
@@ -147,16 +148,12 @@ withRepoContext verbosity globalFlags =
       (fromNubList (globalLocalRepos          globalFlags))
       (fromFlag    (globalCacheDir            globalFlags))
       (flagToMaybe (globalHttpTransport       globalFlags))
-      (fromNubList (globalHttpTransportFlags  globalFlags))
+      (flagToMaybe (globalHttpTransportFlags  globalFlags))
       (flagToMaybe (globalIgnoreExpiry        globalFlags))
       (fromNubList (globalProgPathExtra       globalFlags))
 
-lookupTransportFlags :: Maybe String -> [HttpTransportFlags] -> Maybe HttpTransportFlags
-lookupTransportFlags (Just httpTransport)  fs = find ((== httpTransport) . httpTransportFlagsName) fs
-lookupTransportFlags Nothing               _  = Nothing
-
 withRepoContext' :: Verbosity -> [RemoteRepo] -> [FilePath]
-                 -> FilePath  -> Maybe String -> [HttpTransportFlags] -> Maybe Bool
+                 -> FilePath  -> Maybe String -> Maybe HttpTransportFlags -> Maybe Bool
                  -> [FilePath]
                  -> (RepoContext -> IO a)
                  -> IO a
@@ -191,7 +188,13 @@ withRepoContext' verbosity remoteRepos localRepos
       modifyMVar transportRef $ \mTransport -> do
         transport <- case mTransport of
           Just tr -> return tr
-          Nothing -> configureTransport verbosity extraPaths (lookupTransportFlags httpTransport httpTransportFlags)
+          Nothing -> do
+            httpFlags <- case (httpTransport, httpTransportFlags) of
+                  (Just _, Just _) ->
+                    throwIO $ userError "http-transport: conflicting stanzas: 'http-transport' is defined twice"
+                  (Just t, _) -> return $ Just (emptyHttpTransportFlags t)
+                  (_, t) -> return t
+            configureTransport verbosity extraPaths httpFlags
         return (Just transport, transport)
 
     withSecureRepo :: Map Repo SecureRepo

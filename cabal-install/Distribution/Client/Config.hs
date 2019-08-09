@@ -255,7 +255,7 @@ instance Semigroup SavedConfig where
         globalIgnoreSandbox       = combine globalIgnoreSandbox,
         globalIgnoreExpiry        = combine globalIgnoreExpiry,
         globalHttpTransport       = combine globalHttpTransport,
-        globalHttpTransportFlags  = lastNonEmptyNL globalHttpTransportFlags,
+        globalHttpTransportFlags  = combine globalHttpTransportFlags,
         globalNix                 = combine globalNix,
         globalStoreDir            = combine globalStoreDir,
         globalProgPathExtra       = lastNonEmptyNL globalProgPathExtra
@@ -1089,12 +1089,13 @@ parseConfig src initial = \str -> do
   let init0   = savedInitFlags config
       user0   = savedUserInstallDirs config
       global0 = savedGlobalInstallDirs config
-  (httpTransportSections0, remoteRepoSections0, haddockFlags, initFlags, user, global, paths, args) <-
-    foldM parseSections
-          ([], [], savedHaddockFlags config, init0, user0, global0, [], [])
-          knownSections
 
-  let httpTransportSections = nubBy ((==) `on` httpTransportFlagsName) httpTransportSections0
+  let http0 = globalHttpTransportFlags (savedGlobalFlags config)
+
+  (http, remoteRepoSections0, haddockFlags, initFlags, user, global, paths, args) <-
+    foldM parseSections
+          (http0, [], savedHaddockFlags config, init0, user0, global0, [], [])
+          knownSections
 
   let remoteRepoSections =
           reverse
@@ -1103,7 +1104,7 @@ parseConfig src initial = \str -> do
 
   return . fixConfigMultilines $ config {
     savedGlobalFlags       = (savedGlobalFlags config) {
-       globalHttpTransportFlags = toNubList httpTransportSections,
+       globalHttpTransportFlags = http,
        globalRemoteRepos   = toNubList remoteRepoSections,
        -- the global extra prog path comes from the configure flag prog path
        globalProgPathExtra = configProgramPathExtra (savedConfigureFlags config)
@@ -1126,7 +1127,7 @@ parseConfig src initial = \str -> do
     isKnownSection (ParseUtils.Section _ "install-dirs" _ _)            = True
     isKnownSection (ParseUtils.Section _ "program-locations" _ _)       = True
     isKnownSection (ParseUtils.Section _ "program-default-options" _ _) = True
-    isKnownSection (ParseUtils.Section _ "http-transport-flags" _ _)    = True
+    isKnownSection (ParseUtils.Section _ "http-transport" _ _)    = True
     isKnownSection _                                                    = False
 
     -- attempt to split fields that can represent lists of paths into actual lists
@@ -1154,10 +1155,10 @@ parseConfig src initial = \str -> do
     parse = parseFields (configFieldDescriptions src
                       ++ deprecatedFieldDescriptions) initial
 
-    parseSections (ts, rs, h, i, u, g, p, a)
-                 (ParseUtils.Section _ "http-transport-config" name fs) = do
-      t' <- parseFields httpTransportFields (emptyHttpTransportFlags name) fs
-      return (t':ts, rs, h, i, u, g, p, a)
+    parseSections (_, rs, h, i, u, g, p, a)
+                 (ParseUtils.Section _ "http-transport" name fs) = do
+      ts' <- parseFields httpTransportFields (emptyHttpTransportFlags name) fs
+      return (Flag ts', rs, h, i, u, g, p, a)
 
     parseSections (ts, rs, h, i, u, g, p, a)
                  (ParseUtils.Section _ "repository" name fs) = do
