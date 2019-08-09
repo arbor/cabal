@@ -43,7 +43,7 @@ import Distribution.Simple.Utils
 import Distribution.Client.Utils
          ( withTempFileName )
 import Distribution.Client.Types
-         ( RemoteRepo(..) )
+         ( RemoteRepo(..), HttpTransportFlags(..), emptyHttpTransportFlags )
 import Distribution.System
          ( buildOS, buildArch )
 import qualified System.FilePath.Posix as FilePath.Posix
@@ -249,33 +249,34 @@ noPostYet :: Verbosity -> URI -> String -> Maybe (String, String)
 noPostYet verbosity _ _ _ = die' verbosity "Posting (for report upload) is not implemented yet"
 
 supportedTransports :: [(String, Maybe Program, Bool,
-                         ProgramDb -> Maybe HttpTransport)]
+                         ProgramDb -> HttpTransportFlags -> Maybe HttpTransport)]
 supportedTransports =
     [ let prog = simpleProgram "curl" in
       ( "curl", Just prog, True
-      , \db -> curlTransport <$> lookupProgram prog db )
+      , \db htf -> curlTransport htf <$> lookupProgram prog db)
 
     , let prog = (simpleProgram "curl") { programPostConf = post }
           args = ["-n"]
           post = \_ p -> return p { programOverrideArgs = args } in
       ( "curlnetrc", Just prog, True
-      , \db -> curlTransport <$> lookupProgram prog db )
+      , \db htf -> curlTransport htf <$> lookupProgram prog db )
 
     , let prog = simpleProgram "wget" in
       ( "wget", Just prog, True
-      , \db -> wgetTransport <$> lookupProgram prog db )
+      , \db _ -> wgetTransport <$> lookupProgram prog db )
 
     , let prog = simpleProgram "powershell" in
       ( "powershell", Just prog, True
-      , \db -> powershellTransport <$> lookupProgram prog db )
+      , \db _ -> powershellTransport <$> lookupProgram prog db )
 
     , ( "plain-http", Nothing, False
-      , \_ -> Just plainHttpTransport )
+      , \_ _ -> Just plainHttpTransport )
     ]
 
-configureTransport :: Verbosity -> [FilePath] -> Maybe String -> IO HttpTransport
+configureTransport :: Verbosity -> [FilePath] -> Maybe HttpTransportFlags -> IO HttpTransport
 
-configureTransport verbosity extraPath (Just name) =
+configureTransport verbosity extraPath (Just httpTransportFlags) =
+    let name = httpTransportFlagsName httpTransportFlags in
     -- the user specifically selected a transport by name so we'll try and
     -- configure that one
 
@@ -288,7 +289,7 @@ configureTransport verbosity extraPath (Just name) =
           Just prog -> snd <$> requireProgram verbosity prog baseProgDb
                        --      ^^ if it fails, it'll fail here
 
-        let Just transport = mkTrans progdb
+        let Just transport = mkTrans progdb httpTransportFlags
         return transport { transportManuallySelected = True }
 
       Nothing -> die' verbosity $ "Unknown HTTP transport specified: " ++ name
@@ -311,7 +312,7 @@ configureTransport verbosity extraPath Nothing = do
     let availableTransports =
           [ (name, transport)
           | (name, _, _, mkTrans) <- supportedTransports
-          , transport <- maybeToList (mkTrans progdb) ]
+          , transport <- maybeToList (mkTrans progdb (emptyHttpTransportFlags name)) ]
         -- there's always one because the plain one is last and never fails
     let (name, transport) = head availableTransports
     debug verbosity $ "Selected http transport implementation: " ++ name
@@ -323,14 +324,17 @@ configureTransport verbosity extraPath Nothing = do
 -- The HttpTransports based on external programs
 --
 
-curlTransport :: ConfiguredProgram -> HttpTransport
-curlTransport prog =
+curlTransport :: HttpTransportFlags -> ConfiguredProgram -> HttpTransport
+curlTransport httpTransportFlags prog =
     HttpTransport gethttp posthttp posthttpfile puthttpfile True False
   where
     gethttp verbosity uri etag destPath reqHeaders = do
         withTempFile (takeDirectory destPath)
                      "curl-headers.txt" $ \tmpFile tmpHandle -> do
           hClose tmpHandle
+          let netrcFlags = case httpTransportFlagsUseNetrc httpTransportFlags of
+                Just True -> ["--netrc"]
+                _         -> []
           let args = [ show uri
                    , "--output", destPath
                    , "--location"
@@ -338,6 +342,7 @@ curlTransport prog =
                    , "--user-agent", userAgent
                    , "--silent", "--show-error"
                    , "--dump-header", tmpFile ]
+                ++ netrcFlags
                 ++ concat
                    [ ["--header", "If-None-Match: " ++ t]
                    | t <- maybeToList etag ]

@@ -473,6 +473,7 @@ convertLegacyBuildOnlyFlags globalFlags configFlags
       globalLogsDir           = projectConfigLogsDir,
       globalWorldFile         = _,
       globalHttpTransport     = projectConfigHttpTransport,
+      globalHttpTransportFlags  = projectConfigHttpTransportFlags,
       globalIgnoreExpiry      = projectConfigIgnoreExpiry
     } = globalFlags
 
