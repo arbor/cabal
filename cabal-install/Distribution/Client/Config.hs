@@ -52,7 +52,7 @@ import Distribution.Deprecated.ViewAsFieldDescr
 import Distribution.Client.Types
          ( RemoteRepo(..), Username(..), Password(..), emptyRemoteRepo
          , AllowOlder(..), AllowNewer(..), RelaxDeps(..), isRelaxDeps
-         , HttpTransportFlags(..)
+         , HttpTransportFlags(..), emptyHttpTransportFlags
          )
 import Distribution.Client.BuildReports.Types
          ( ReportLevel(..) )
@@ -1089,10 +1089,12 @@ parseConfig src initial = \str -> do
   let init0   = savedInitFlags config
       user0   = savedUserInstallDirs config
       global0 = savedGlobalInstallDirs config
-  (remoteRepoSections0, haddockFlags, initFlags, user, global, paths, args) <-
+  (httpTransportSections0, remoteRepoSections0, haddockFlags, initFlags, user, global, paths, args) <-
     foldM parseSections
-          ([], savedHaddockFlags config, init0, user0, global0, [], [])
+          ([], [], savedHaddockFlags config, init0, user0, global0, [], [])
           knownSections
+
+  let httpTransportSections = nubBy ((==) `on` httpTransportFlagsName) httpTransportSections0
 
   let remoteRepoSections =
           reverse
@@ -1101,6 +1103,7 @@ parseConfig src initial = \str -> do
 
   return . fixConfigMultilines $ config {
     savedGlobalFlags       = (savedGlobalFlags config) {
+       globalHttpTransportFlags = toNubList httpTransportSections,
        globalRemoteRepos   = toNubList remoteRepoSections,
        -- the global extra prog path comes from the configure flag prog path
        globalProgPathExtra = configProgramPathExtra (savedConfigureFlags config)
@@ -1123,7 +1126,7 @@ parseConfig src initial = \str -> do
     isKnownSection (ParseUtils.Section _ "install-dirs" _ _)            = True
     isKnownSection (ParseUtils.Section _ "program-locations" _ _)       = True
     isKnownSection (ParseUtils.Section _ "program-default-options" _ _) = True
-    isKnownSection (ParseUtils.Section _ "http-transport" _ _)          = True
+    isKnownSection (ParseUtils.Section _ "http-transport-flags" _ _)    = True
     isKnownSection _                                                    = False
 
     -- attempt to split fields that can represent lists of paths into actual lists
@@ -1151,7 +1154,12 @@ parseConfig src initial = \str -> do
     parse = parseFields (configFieldDescriptions src
                       ++ deprecatedFieldDescriptions) initial
 
-    parseSections (rs, h, i, u, g, p, a)
+    parseSections (ts, rs, h, i, u, g, p, a)
+                 (ParseUtils.Section _ "http-transport-config" name fs) = do
+      t' <- parseFields httpTransportFields (emptyHttpTransportFlags name) fs
+      return (t':ts, rs, h, i, u, g, p, a)
+
+    parseSections (ts, rs, h, i, u, g, p, a)
                  (ParseUtils.Section _ "repository" name fs) = do
       r' <- parseFields remoteRepoFields (emptyRemoteRepo name) fs
       when (remoteRepoKeyThreshold r' > length (remoteRepoRootKeys r')) $
@@ -1161,51 +1169,51 @@ parseConfig src initial = \str -> do
             && remoteRepoSecure r' /= Just True) $
         warning $ "'root-keys' for repository " ++ show (remoteRepoName r')
                ++ " non-empty, but 'secure' not set to True."
-      return (r':rs, h, i, u, g, p, a)
+      return (ts, r':rs, h, i, u, g, p, a)
 
-    parseSections (rs, h, i, u, g, p, a)
+    parseSections (ts, rs, h, i, u, g, p, a)
                  (ParseUtils.F lno "remote-repo" raw) = do
       let mr' = readRepo raw
       r' <- maybe (ParseFailed $ NoParse "remote-repo" lno) return mr'
-      return (r':rs, h, i, u, g, p, a)
+      return (ts, r':rs, h, i, u, g, p, a)
 
-    parseSections accum@(rs, h, i, u, g, p, a)
+    parseSections accum@(ts, rs, h, i, u, g, p, a)
                  (ParseUtils.Section _ "haddock" name fs)
       | name == ""        = do h' <- parseFields haddockFlagsFields h fs
-                               return (rs, h', i, u, g, p, a)
+                               return (ts, rs, h', i, u, g, p, a)
       | otherwise         = do
           warning "The 'haddock' section should be unnamed"
           return accum
 
-    parseSections accum@(rs, h, i, u, g, p, a)
+    parseSections accum@(ts, rs, h, i, u, g, p, a)
                  (ParseUtils.Section _ "init" name fs)
       | name == ""        = do i' <- parseFields initFlagsFields i fs
-                               return (rs, h, i', u, g, p, a)
+                               return (ts, rs, h, i', u, g, p, a)
       | otherwise         = do
           warning "The 'init' section should be unnamed"
           return accum
 
-    parseSections accum@(rs, h, i, u, g, p, a)
+    parseSections accum@(ts, rs, h, i, u, g, p, a)
                   (ParseUtils.Section _ "install-dirs" name fs)
       | name' == "user"   = do u' <- parseFields installDirsFields u fs
-                               return (rs, h, i, u', g, p, a)
+                               return (ts, rs, h, i, u', g, p, a)
       | name' == "global" = do g' <- parseFields installDirsFields g fs
-                               return (rs, h, i, u, g', p, a)
+                               return (ts, rs, h, i, u, g', p, a)
       | otherwise         = do
           warning "The 'install-paths' section should be for 'user' or 'global'"
           return accum
       where name' = lowercase name
-    parseSections accum@(rs, h, i, u, g, p, a)
+    parseSections accum@(ts, rs, h, i, u, g, p, a)
                  (ParseUtils.Section _ "program-locations" name fs)
       | name == ""        = do p' <- parseFields withProgramsFields p fs
-                               return (rs, h, i, u, g, p', a)
+                               return (ts, rs, h, i, u, g, p', a)
       | otherwise         = do
           warning "The 'program-locations' section should be unnamed"
           return accum
-    parseSections accum@(rs, h, i, u, g, p, a)
+    parseSections accum@(ts, rs, h, i, u, g, p, a)
                   (ParseUtils.Section _ "program-default-options" name fs)
       | name == ""        = do a' <- parseFields withProgramOptionsFields a fs
-                               return (rs, h, i, u, g, p, a')
+                               return (ts, rs, h, i, u, g, p, a')
       | otherwise         = do
           warning "The 'program-default-options' section should be unnamed"
           return accum
