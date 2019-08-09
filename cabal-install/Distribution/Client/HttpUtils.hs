@@ -325,9 +325,6 @@ curlTransport httpTransportFlags prog =
         withTempFile (takeDirectory destPath)
                      "curl-headers.txt" $ \tmpFile tmpHandle -> do
           hClose tmpHandle
-          let netrcFlags = case httpTransportFlagsUseNetrc httpTransportFlags of
-                Just True -> ["--netrc"]
-                _         -> []
           let args = [ show uri
                    , "--output", destPath
                    , "--location"
@@ -371,6 +368,7 @@ curlTransport httpTransportFlags prog =
                    , "--header", "Accept: text/plain"
                    , "--location"
                    ]
+                ++ netrcFlags
         resp <- getProgramInvocationOutput verbosity $ addAuthConfig auth
                   (programInvocation prog args)
         (code, err, _etag) <- parseResponse verbosity uri resp ""
@@ -385,6 +383,7 @@ curlTransport httpTransportFlags prog =
                    , "--location"
                    , "--header", "Accept: text/plain"
                    ]
+                ++ netrcFlags
                 ++ concat
                    [ ["--header", show name ++ ": " ++ value]
                    | Header name value <- headers ]
@@ -392,6 +391,10 @@ curlTransport httpTransportFlags prog =
                   (programInvocation prog args)
         (code, err, _etag) <- parseResponse verbosity uri resp ""
         return (code, err)
+
+    netrcFlags = case httpTransportFlagsUseNetrc httpTransportFlags of
+      Just True -> ["--netrc"]
+      _         -> []
 
     -- on success these curl invocations produces an output like "200"
     -- and on failure it has the server error response first
@@ -440,15 +443,11 @@ wgetTransport httpTransportFlags prog =
         (code, etag') <- parseOutput verbosity uri resp
         return (code, etag')
       where
-        netrcFlags = case httpTransportFlagsUseNetrc httpTransportFlags of
-          Just False  -> ["--no-netrc"]
-          _           -> []
         args = [ "--output-document=" ++ destPath
                , "--user-agent=" ++ userAgent
                , "--tries=5"
                , "--timeout=15"
                , "--server-response" ]
-            ++ netrcFlags
             ++ concat
                [ ["--header", "If-None-Match: " ++ t]
                | t <- maybeToList etag ]
@@ -512,10 +511,15 @@ wgetTransport httpTransportFlags prog =
       a = fromMaybe (URIAuth "" "" "") (uriAuthority uri)
 
     runWGet verbosity uri args = do
+        let netrcFlags = case httpTransportFlagsUseNetrc httpTransportFlags of
+              Just False  -> ["--no-netrc"]
+              _           -> []
+
         -- We pass the URI via STDIN because it contains the users' credentials
         -- and sensitive data should not be passed via command line arguments.
         let
-          invocation = (programInvocation prog ("--input-file=-" : args))
+          args' = netrcFlags ++ args
+          invocation = (programInvocation prog ("--input-file=-" : args'))
             { progInvokeInput = Just (uriToString id uri "")
             }
 
