@@ -17,7 +17,7 @@ import Prelude ()
 import Distribution.Client.Compat.Prelude
 
 import Distribution.Client.Types
-         ( Repo(..), RemoteRepo(..) )
+         ( Repo(..), RemoteRepo(..), HttpTransportFlags(..) )
 import Distribution.Simple.Setup
          ( Flag(..), fromFlag, flagToMaybe )
 import Distribution.Utils.NubList
@@ -54,44 +54,46 @@ import qualified Distribution.Client.Security.DNS           as Sec.DNS
 
 -- | Flags that apply at the top level, not to any sub-command.
 data GlobalFlags = GlobalFlags {
-    globalVersion           :: Flag Bool,
-    globalNumericVersion    :: Flag Bool,
-    globalConfigFile        :: Flag FilePath,
-    globalSandboxConfigFile :: Flag FilePath,
-    globalConstraintsFile   :: Flag FilePath,
-    globalRemoteRepos       :: NubList RemoteRepo,     -- ^ Available Hackage servers.
-    globalCacheDir          :: Flag FilePath,
-    globalLocalRepos        :: NubList FilePath,
-    globalLogsDir           :: Flag FilePath,
-    globalWorldFile         :: Flag FilePath,
-    globalRequireSandbox    :: Flag Bool,
-    globalIgnoreSandbox     :: Flag Bool,
-    globalIgnoreExpiry      :: Flag Bool,    -- ^ Ignore security expiry dates
-    globalHttpTransport     :: Flag String,
-    globalNix               :: Flag Bool,  -- ^ Integrate with Nix
-    globalStoreDir          :: Flag FilePath,
-    globalProgPathExtra     :: NubList FilePath -- ^ Extra program path used for packagedb lookups in a global context (i.e. for http transports)
+    globalVersion             :: Flag Bool,
+    globalNumericVersion      :: Flag Bool,
+    globalConfigFile          :: Flag FilePath,
+    globalSandboxConfigFile   :: Flag FilePath,
+    globalConstraintsFile     :: Flag FilePath,
+    globalRemoteRepos         :: NubList RemoteRepo,     -- ^ Available Hackage servers.
+    globalCacheDir            :: Flag FilePath,
+    globalLocalRepos          :: NubList FilePath,
+    globalLogsDir             :: Flag FilePath,
+    globalWorldFile           :: Flag FilePath,
+    globalRequireSandbox      :: Flag Bool,
+    globalIgnoreSandbox       :: Flag Bool,
+    globalIgnoreExpiry        :: Flag Bool,    -- ^ Ignore security expiry dates
+    globalHttpTransport       :: Flag String,
+    globalHttpTransportFlags :: NubList HttpTransportFlags,
+    globalNix                 :: Flag Bool,  -- ^ Integrate with Nix
+    globalStoreDir            :: Flag FilePath,
+    globalProgPathExtra       :: NubList FilePath -- ^ Extra program path used for packagedb lookups in a global context (i.e. for http transports)
   } deriving Generic
 
 defaultGlobalFlags :: GlobalFlags
 defaultGlobalFlags  = GlobalFlags {
-    globalVersion           = Flag False,
-    globalNumericVersion    = Flag False,
-    globalConfigFile        = mempty,
-    globalSandboxConfigFile = mempty,
-    globalConstraintsFile   = mempty,
-    globalRemoteRepos       = mempty,
-    globalCacheDir          = mempty,
-    globalLocalRepos        = mempty,
-    globalLogsDir           = mempty,
-    globalWorldFile         = mempty,
-    globalRequireSandbox    = Flag False,
-    globalIgnoreSandbox     = Flag False,
-    globalIgnoreExpiry      = Flag False,
-    globalHttpTransport     = mempty,
-    globalNix               = Flag False,
-    globalStoreDir          = mempty,
-    globalProgPathExtra     = mempty
+    globalVersion             = Flag False,
+    globalNumericVersion      = Flag False,
+    globalConfigFile          = mempty,
+    globalSandboxConfigFile   = mempty,
+    globalConstraintsFile     = mempty,
+    globalRemoteRepos         = mempty,
+    globalCacheDir            = mempty,
+    globalLocalRepos          = mempty,
+    globalLogsDir             = mempty,
+    globalWorldFile           = mempty,
+    globalRequireSandbox      = Flag False,
+    globalIgnoreSandbox       = Flag False,
+    globalIgnoreExpiry        = Flag False,
+    globalHttpTransport       = mempty,
+    globalHttpTransportFlags = mempty,
+    globalNix                 = Flag False,
+    globalStoreDir            = mempty,
+    globalProgPathExtra       = mempty
   }
 
 instance Monoid GlobalFlags where

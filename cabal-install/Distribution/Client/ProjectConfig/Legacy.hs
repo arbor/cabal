@@ -560,6 +560,7 @@ convertToLegacySharedConfig
       globalIgnoreSandbox     = mempty,
       globalIgnoreExpiry      = projectConfigIgnoreExpiry,
       globalHttpTransport     = projectConfigHttpTransport,
+      globalHttpTransportArgs = mempty,
       globalNix               = mempty,
       globalStoreDir          = projectConfigStoreDir,
       globalProgPathExtra     = projectConfigProgPathExtra
