@@ -52,6 +52,7 @@ import Distribution.Deprecated.ViewAsFieldDescr
 import Distribution.Client.Types
          ( RemoteRepo(..), Username(..), Password(..), emptyRemoteRepo
          , AllowOlder(..), AllowNewer(..), RelaxDeps(..), isRelaxDeps
+         , HttpTransportFlags(..), emptyHttpTransportFlags
          )
 import Distribution.Client.BuildReports.Types
          ( ReportLevel(..) )
@@ -240,23 +241,24 @@ instance Semigroup SavedConfig where
                                   _  -> b'
 
       combinedSavedGlobalFlags = GlobalFlags {
-        globalVersion           = combine globalVersion,
-        globalNumericVersion    = combine globalNumericVersion,
-        globalConfigFile        = combine globalConfigFile,
-        globalSandboxConfigFile = combine globalSandboxConfigFile,
-        globalConstraintsFile   = combine globalConstraintsFile,
-        globalRemoteRepos       = lastNonEmptyNL globalRemoteRepos,
-        globalCacheDir          = combine globalCacheDir,
-        globalLocalRepos        = lastNonEmptyNL globalLocalRepos,
-        globalLogsDir           = combine globalLogsDir,
-        globalWorldFile         = combine globalWorldFile,
-        globalRequireSandbox    = combine globalRequireSandbox,
-        globalIgnoreSandbox     = combine globalIgnoreSandbox,
-        globalIgnoreExpiry      = combine globalIgnoreExpiry,
-        globalHttpTransport     = combine globalHttpTransport,
-        globalNix               = combine globalNix,
-        globalStoreDir          = combine globalStoreDir,
-        globalProgPathExtra     = lastNonEmptyNL globalProgPathExtra
+        globalVersion             = combine globalVersion,
+        globalNumericVersion      = combine globalNumericVersion,
+        globalConfigFile          = combine globalConfigFile,
+        globalSandboxConfigFile   = combine globalSandboxConfigFile,
+        globalConstraintsFile     = combine globalConstraintsFile,
+        globalRemoteRepos         = lastNonEmptyNL globalRemoteRepos,
+        globalCacheDir            = combine globalCacheDir,
+        globalLocalRepos          = lastNonEmptyNL globalLocalRepos,
+        globalLogsDir             = combine globalLogsDir,
+        globalWorldFile           = combine globalWorldFile,
+        globalRequireSandbox      = combine globalRequireSandbox,
+        globalIgnoreSandbox       = combine globalIgnoreSandbox,
+        globalIgnoreExpiry        = combine globalIgnoreExpiry,
+        globalHttpTransport       = combine globalHttpTransport,
+        globalHttpTransportFlags  = combine globalHttpTransportFlags,
+        globalNix                 = combine globalNix,
+        globalStoreDir            = combine globalStoreDir,
+        globalProgPathExtra       = lastNonEmptyNL globalProgPathExtra
         }
         where
           combine        = combine'        savedGlobalFlags
@@ -1087,9 +1089,12 @@ parseConfig src initial = \str -> do
   let init0   = savedInitFlags config
       user0   = savedUserInstallDirs config
       global0 = savedGlobalInstallDirs config
-  (remoteRepoSections0, haddockFlags, initFlags, user, global, paths, args) <-
+
+  let http0 = globalHttpTransportFlags (savedGlobalFlags config)
+
+  (http, remoteRepoSections0, haddockFlags, initFlags, user, global, paths, args) <-
     foldM parseSections
-          ([], savedHaddockFlags config, init0, user0, global0, [], [])
+          (http0, [], savedHaddockFlags config, init0, user0, global0, [], [])
           knownSections
 
   let remoteRepoSections =
@@ -1099,6 +1104,7 @@ parseConfig src initial = \str -> do
 
   return . fixConfigMultilines $ config {
     savedGlobalFlags       = (savedGlobalFlags config) {
+       globalHttpTransportFlags = http,
        globalRemoteRepos   = toNubList remoteRepoSections,
        -- the global extra prog path comes from the configure flag prog path
        globalProgPathExtra = configProgramPathExtra (savedConfigureFlags config)
@@ -1121,6 +1127,7 @@ parseConfig src initial = \str -> do
     isKnownSection (ParseUtils.Section _ "install-dirs" _ _)            = True
     isKnownSection (ParseUtils.Section _ "program-locations" _ _)       = True
     isKnownSection (ParseUtils.Section _ "program-default-options" _ _) = True
+    isKnownSection (ParseUtils.Section _ "http-transport" _ _)    = True
     isKnownSection _                                                    = False
 
     -- attempt to split fields that can represent lists of paths into actual lists
@@ -1148,7 +1155,12 @@ parseConfig src initial = \str -> do
     parse = parseFields (configFieldDescriptions src
                       ++ deprecatedFieldDescriptions) initial
 
-    parseSections (rs, h, i, u, g, p, a)
+    parseSections (_, rs, h, i, u, g, p, a)
+                 (ParseUtils.Section _ "http-transport" name fs) = do
+      ts' <- parseFields httpTransportFields (emptyHttpTransportFlags name) fs
+      return (Flag ts', rs, h, i, u, g, p, a)
+
+    parseSections (ts, rs, h, i, u, g, p, a)
                  (ParseUtils.Section _ "repository" name fs) = do
       r' <- parseFields remoteRepoFields (emptyRemoteRepo name) fs
       when (remoteRepoKeyThreshold r' > length (remoteRepoRootKeys r')) $
@@ -1158,51 +1170,51 @@ parseConfig src initial = \str -> do
             && remoteRepoSecure r' /= Just True) $
         warning $ "'root-keys' for repository " ++ show (remoteRepoName r')
                ++ " non-empty, but 'secure' not set to True."
-      return (r':rs, h, i, u, g, p, a)
+      return (ts, r':rs, h, i, u, g, p, a)
 
-    parseSections (rs, h, i, u, g, p, a)
+    parseSections (ts, rs, h, i, u, g, p, a)
                  (ParseUtils.F lno "remote-repo" raw) = do
       let mr' = readRepo raw
       r' <- maybe (ParseFailed $ NoParse "remote-repo" lno) return mr'
-      return (r':rs, h, i, u, g, p, a)
+      return (ts, r':rs, h, i, u, g, p, a)
 
-    parseSections accum@(rs, h, i, u, g, p, a)
+    parseSections accum@(ts, rs, h, i, u, g, p, a)
                  (ParseUtils.Section _ "haddock" name fs)
       | name == ""        = do h' <- parseFields haddockFlagsFields h fs
-                               return (rs, h', i, u, g, p, a)
+                               return (ts, rs, h', i, u, g, p, a)
       | otherwise         = do
           warning "The 'haddock' section should be unnamed"
           return accum
 
-    parseSections accum@(rs, h, i, u, g, p, a)
+    parseSections accum@(ts, rs, h, i, u, g, p, a)
                  (ParseUtils.Section _ "init" name fs)
       | name == ""        = do i' <- parseFields initFlagsFields i fs
-                               return (rs, h, i', u, g, p, a)
+                               return (ts, rs, h, i', u, g, p, a)
       | otherwise         = do
           warning "The 'init' section should be unnamed"
           return accum
 
-    parseSections accum@(rs, h, i, u, g, p, a)
+    parseSections accum@(ts, rs, h, i, u, g, p, a)
                   (ParseUtils.Section _ "install-dirs" name fs)
       | name' == "user"   = do u' <- parseFields installDirsFields u fs
-                               return (rs, h, i, u', g, p, a)
+                               return (ts, rs, h, i, u', g, p, a)
       | name' == "global" = do g' <- parseFields installDirsFields g fs
-                               return (rs, h, i, u, g', p, a)
+                               return (ts, rs, h, i, u, g', p, a)
       | otherwise         = do
           warning "The 'install-paths' section should be for 'user' or 'global'"
           return accum
       where name' = lowercase name
-    parseSections accum@(rs, h, i, u, g, p, a)
+    parseSections accum@(ts, rs, h, i, u, g, p, a)
                  (ParseUtils.Section _ "program-locations" name fs)
       | name == ""        = do p' <- parseFields withProgramsFields p fs
-                               return (rs, h, i, u, g, p', a)
+                               return (ts, rs, h, i, u, g, p', a)
       | otherwise         = do
           warning "The 'program-locations' section should be unnamed"
           return accum
-    parseSections accum@(rs, h, i, u, g, p, a)
+    parseSections accum@(ts, rs, h, i, u, g, p, a)
                   (ParseUtils.Section _ "program-default-options" name fs)
       | name == ""        = do a' <- parseFields withProgramOptionsFields a fs
-                               return (rs, h, i, u, g, p, a')
+                               return (ts, rs, h, i, u, g, p, a')
       | otherwise         = do
           warning "The 'program-default-options' section should be unnamed"
           return accum
@@ -1256,6 +1268,21 @@ showConfigWithComments comment vals = Disp.render $
 -- | Fields for the 'install-dirs' sections.
 installDirsFields :: [FieldDescr (InstallDirs (Flag PathTemplate))]
 installDirsFields = map viewAsFieldDescr installDirsOptions
+
+ppHttpTransportSection :: HttpTransportFlags -> HttpTransportFlags -> Doc
+ppHttpTransportSection def vals = ppSection "http-transport" (httpTransportFlagsName vals)
+        httpTransportFields (Just def) vals
+
+httpTransportFields :: [FieldDescr HttpTransportFlags]
+httpTransportFields =
+    [ simpleField "netrc"
+        showUseNetrc                (Just `fmap` Text.parse)
+        httpTransportFlagsUseNetrc (\v t -> t { httpTransportFlagsUseNetrc = v})
+    ]
+  where
+    showUseNetrc Nothing      = mempty        -- default transport's setting
+    showUseNetrc (Just True)  = text "True"   -- user explicitly enabled it
+    showUseNetrc (Just False) = text "False"  -- user explicitly disabled it
 
 ppRemoteRepoSection :: RemoteRepo -> RemoteRepo -> Doc
 ppRemoteRepoSection def vals = ppSection "repository" (remoteRepoName vals)

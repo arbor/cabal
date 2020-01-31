@@ -17,7 +17,8 @@ import Prelude ()
 import Distribution.Client.Compat.Prelude
 
 import Distribution.Client.Types
-         ( Repo(..), RemoteRepo(..) )
+         ( Repo(..), RemoteRepo(..)
+         , HttpTransportFlags(..), emptyHttpTransportFlags )
 import Distribution.Simple.Setup
          ( Flag(..), fromFlag, flagToMaybe )
 import Distribution.Utils.NubList
@@ -54,44 +55,46 @@ import qualified Distribution.Client.Security.DNS           as Sec.DNS
 
 -- | Flags that apply at the top level, not to any sub-command.
 data GlobalFlags = GlobalFlags {
-    globalVersion           :: Flag Bool,
-    globalNumericVersion    :: Flag Bool,
-    globalConfigFile        :: Flag FilePath,
-    globalSandboxConfigFile :: Flag FilePath,
-    globalConstraintsFile   :: Flag FilePath,
-    globalRemoteRepos       :: NubList RemoteRepo,     -- ^ Available Hackage servers.
-    globalCacheDir          :: Flag FilePath,
-    globalLocalRepos        :: NubList FilePath,
-    globalLogsDir           :: Flag FilePath,
-    globalWorldFile         :: Flag FilePath,
-    globalRequireSandbox    :: Flag Bool,
-    globalIgnoreSandbox     :: Flag Bool,
-    globalIgnoreExpiry      :: Flag Bool,    -- ^ Ignore security expiry dates
-    globalHttpTransport     :: Flag String,
-    globalNix               :: Flag Bool,  -- ^ Integrate with Nix
-    globalStoreDir          :: Flag FilePath,
-    globalProgPathExtra     :: NubList FilePath -- ^ Extra program path used for packagedb lookups in a global context (i.e. for http transports)
+    globalVersion             :: Flag Bool,
+    globalNumericVersion      :: Flag Bool,
+    globalConfigFile          :: Flag FilePath,
+    globalSandboxConfigFile   :: Flag FilePath,
+    globalConstraintsFile     :: Flag FilePath,
+    globalRemoteRepos         :: NubList RemoteRepo,     -- ^ Available Hackage servers.
+    globalCacheDir            :: Flag FilePath,
+    globalLocalRepos          :: NubList FilePath,
+    globalLogsDir             :: Flag FilePath,
+    globalWorldFile           :: Flag FilePath,
+    globalRequireSandbox      :: Flag Bool,
+    globalIgnoreSandbox       :: Flag Bool,
+    globalIgnoreExpiry        :: Flag Bool,    -- ^ Ignore security expiry dates
+    globalHttpTransport       :: Flag String,
+    globalHttpTransportFlags  :: Flag HttpTransportFlags,
+    globalNix                 :: Flag Bool,  -- ^ Integrate with Nix
+    globalStoreDir            :: Flag FilePath,
+    globalProgPathExtra       :: NubList FilePath -- ^ Extra program path used for packagedb lookups in a global context (i.e. for http transports)
   } deriving Generic
 
 defaultGlobalFlags :: GlobalFlags
 defaultGlobalFlags  = GlobalFlags {
-    globalVersion           = Flag False,
-    globalNumericVersion    = Flag False,
-    globalConfigFile        = mempty,
-    globalSandboxConfigFile = mempty,
-    globalConstraintsFile   = mempty,
-    globalRemoteRepos       = mempty,
-    globalCacheDir          = mempty,
-    globalLocalRepos        = mempty,
-    globalLogsDir           = mempty,
-    globalWorldFile         = mempty,
-    globalRequireSandbox    = Flag False,
-    globalIgnoreSandbox     = Flag False,
-    globalIgnoreExpiry      = Flag False,
-    globalHttpTransport     = mempty,
-    globalNix               = Flag False,
-    globalStoreDir          = mempty,
-    globalProgPathExtra     = mempty
+    globalVersion             = Flag False,
+    globalNumericVersion      = Flag False,
+    globalConfigFile          = mempty,
+    globalSandboxConfigFile   = mempty,
+    globalConstraintsFile     = mempty,
+    globalRemoteRepos         = mempty,
+    globalCacheDir            = mempty,
+    globalLocalRepos          = mempty,
+    globalLogsDir             = mempty,
+    globalWorldFile           = mempty,
+    globalRequireSandbox      = Flag False,
+    globalIgnoreSandbox       = Flag False,
+    globalIgnoreExpiry        = Flag False,
+    globalHttpTransport       = mempty,
+    globalHttpTransportFlags  = mempty,
+    globalNix                 = Flag False,
+    globalStoreDir            = mempty,
+    globalProgPathExtra       = mempty
   }
 
 instance Monoid GlobalFlags where
@@ -141,20 +144,23 @@ withRepoContext :: Verbosity -> GlobalFlags -> (RepoContext -> IO a) -> IO a
 withRepoContext verbosity globalFlags =
     withRepoContext'
       verbosity
-      (fromNubList (globalRemoteRepos    globalFlags))
-      (fromNubList (globalLocalRepos     globalFlags))
-      (fromFlag    (globalCacheDir       globalFlags))
-      (flagToMaybe (globalHttpTransport  globalFlags))
-      (flagToMaybe (globalIgnoreExpiry   globalFlags))
-      (fromNubList (globalProgPathExtra globalFlags))
+      (fromNubList (globalRemoteRepos         globalFlags))
+      (fromNubList (globalLocalRepos          globalFlags))
+      (fromFlag    (globalCacheDir            globalFlags))
+      (flagToMaybe (globalHttpTransport       globalFlags))
+      (flagToMaybe (globalHttpTransportFlags  globalFlags))
+      (flagToMaybe (globalIgnoreExpiry        globalFlags))
+      (fromNubList (globalProgPathExtra       globalFlags))
 
 withRepoContext' :: Verbosity -> [RemoteRepo] -> [FilePath]
-                 -> FilePath  -> Maybe String -> Maybe Bool
+                 -> FilePath  -> Maybe String -> Maybe HttpTransportFlags -> Maybe Bool
                  -> [FilePath]
                  -> (RepoContext -> IO a)
                  -> IO a
 withRepoContext' verbosity remoteRepos localRepos
-                 sharedCacheDir httpTransport ignoreExpiry extraPaths = \callback -> do
+                 sharedCacheDir
+                 httpTransport httpTransportFlags
+                 ignoreExpiry extraPaths = \callback -> do
     transportRef <- newMVar Nothing
     let httpLib = Sec.HTTP.transportAdapter
                     verbosity
@@ -182,7 +188,13 @@ withRepoContext' verbosity remoteRepos localRepos
       modifyMVar transportRef $ \mTransport -> do
         transport <- case mTransport of
           Just tr -> return tr
-          Nothing -> configureTransport verbosity extraPaths httpTransport
+          Nothing -> do
+            httpFlags <- case (httpTransport, httpTransportFlags) of
+                  (Just _, Just _) ->
+                    throwIO $ userError "http-transport: conflicting stanzas: 'http-transport' is defined twice"
+                  (Just t, _) -> return $ Just (emptyHttpTransportFlags t)
+                  (_, t) -> return t
+            configureTransport verbosity extraPaths httpFlags
         return (Just transport, transport)
 
     withSecureRepo :: Map Repo SecureRepo

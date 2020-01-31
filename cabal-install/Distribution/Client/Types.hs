@@ -303,6 +303,25 @@ instance Binary URIAuth where
   put (URIAuth a b c) = do put a; put b; put c
   get = do !a <- get; !b <- get; !c <- get; return (URIAuth a b c)
 
+data HttpTransportFlags =
+    HttpTransportFlags {
+      httpTransportFlagsName   :: String,
+
+      -- | Enable netrc?
+      --
+      -- 'Nothing' here represents "whatever default is";
+      -- this is important for backwards compatibility
+      -- because different transports have different defaults
+      -- (wget uses netrc by default, but curl does not, etc.)
+      httpTransportFlagsUseNetrc :: Maybe Bool
+    }
+  deriving (Show, Eq, Ord, Generic)
+
+instance Binary HttpTransportFlags
+
+emptyHttpTransportFlags :: String -> HttpTransportFlags
+emptyHttpTransportFlags name = HttpTransportFlags name Nothing
+
 data RemoteRepo =
     RemoteRepo {
       remoteRepoName     :: String,

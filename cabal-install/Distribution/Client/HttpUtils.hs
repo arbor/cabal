@@ -43,7 +43,7 @@ import Distribution.Simple.Utils
 import Distribution.Client.Utils
          ( withTempFileName )
 import Distribution.Client.Types
-         ( RemoteRepo(..) )
+         ( RemoteRepo(..), HttpTransportFlags(..), emptyHttpTransportFlags )
 import Distribution.System
          ( buildOS, buildArch )
 import qualified System.FilePath.Posix as FilePath.Posix
@@ -248,27 +248,28 @@ noPostYet :: Verbosity -> URI -> String -> Maybe (String, String)
 noPostYet verbosity _ _ _ = die' verbosity "Posting (for report upload) is not implemented yet"
 
 supportedTransports :: [(String, Maybe Program, Bool,
-                         ProgramDb -> Maybe HttpTransport)]
+                         ProgramDb -> HttpTransportFlags -> Maybe HttpTransport)]
 supportedTransports =
     [ let prog = simpleProgram "curl" in
       ( "curl", Just prog, True
-      , \db -> curlTransport <$> lookupProgram prog db )
+      , \db httpTransportFlag -> curlTransport httpTransportFlag <$> lookupProgram prog db)
 
     , let prog = simpleProgram "wget" in
       ( "wget", Just prog, True
-      , \db -> wgetTransport <$> lookupProgram prog db )
+      , \db httpTransportFlag -> wgetTransport httpTransportFlag <$> lookupProgram prog db )
 
     , let prog = simpleProgram "powershell" in
       ( "powershell", Just prog, True
-      , \db -> powershellTransport <$> lookupProgram prog db )
+      , \db _ -> powershellTransport <$> lookupProgram prog db )
 
     , ( "plain-http", Nothing, False
-      , \_ -> Just plainHttpTransport )
+      , \_ _ -> Just plainHttpTransport )
     ]
 
-configureTransport :: Verbosity -> [FilePath] -> Maybe String -> IO HttpTransport
+configureTransport :: Verbosity -> [FilePath] -> Maybe HttpTransportFlags -> IO HttpTransport
 
-configureTransport verbosity extraPath (Just name) =
+configureTransport verbosity extraPath (Just httpTransportFlags) =
+    let name = httpTransportFlagsName httpTransportFlags in
     -- the user specifically selected a transport by name so we'll try and
     -- configure that one
 
@@ -281,7 +282,7 @@ configureTransport verbosity extraPath (Just name) =
           Just prog -> snd <$> requireProgram verbosity prog baseProgDb
                        --      ^^ if it fails, it'll fail here
 
-        let Just transport = mkTrans progdb
+        let Just transport = mkTrans progdb httpTransportFlags
         return transport { transportManuallySelected = True }
 
       Nothing -> die' verbosity $ "Unknown HTTP transport specified: " ++ name
@@ -304,7 +305,7 @@ configureTransport verbosity extraPath Nothing = do
     let availableTransports =
           [ (name, transport)
           | (name, _, _, mkTrans) <- supportedTransports
-          , transport <- maybeToList (mkTrans progdb) ]
+          , transport <- maybeToList (mkTrans progdb (emptyHttpTransportFlags name)) ]
         -- there's always one because the plain one is last and never fails
     let (name, transport) = head availableTransports
     debug verbosity $ "Selected http transport implementation: " ++ name
@@ -316,8 +317,8 @@ configureTransport verbosity extraPath Nothing = do
 -- The HttpTransports based on external programs
 --
 
-curlTransport :: ConfiguredProgram -> HttpTransport
-curlTransport prog =
+curlTransport :: HttpTransportFlags -> ConfiguredProgram -> HttpTransport
+curlTransport httpTransportFlags prog =
     HttpTransport gethttp posthttp posthttpfile puthttpfile True False
   where
     gethttp verbosity uri etag destPath reqHeaders = do
@@ -331,6 +332,7 @@ curlTransport prog =
                    , "--user-agent", userAgent
                    , "--silent", "--show-error"
                    , "--dump-header", tmpFile ]
+                ++ netrcFlags
                 ++ concat
                    [ ["--header", "If-None-Match: " ++ t]
                    | t <- maybeToList etag ]
@@ -366,6 +368,7 @@ curlTransport prog =
                    , "--header", "Accept: text/plain"
                    , "--location"
                    ]
+                ++ netrcFlags
         resp <- getProgramInvocationOutput verbosity $ addAuthConfig auth
                   (programInvocation prog args)
         (code, err, _etag) <- parseResponse verbosity uri resp ""
@@ -380,6 +383,7 @@ curlTransport prog =
                    , "--location"
                    , "--header", "Accept: text/plain"
                    ]
+                ++ netrcFlags
                 ++ concat
                    [ ["--header", show name ++ ": " ++ value]
                    | Header name value <- headers ]
@@ -387,6 +391,10 @@ curlTransport prog =
                   (programInvocation prog args)
         (code, err, _etag) <- parseResponse verbosity uri resp ""
         return (code, err)
+
+    netrcFlags = case httpTransportFlagsUseNetrc httpTransportFlags of
+      Just True -> ["--netrc"]
+      _         -> []
 
     -- on success these curl invocations produces an output like "200"
     -- and on failure it has the server error response first
@@ -413,8 +421,8 @@ curlTransport prog =
             _             -> statusParseFail verbosity uri resp
 
 
-wgetTransport :: ConfiguredProgram -> HttpTransport
-wgetTransport prog =
+wgetTransport :: HttpTransportFlags -> ConfiguredProgram -> HttpTransport
+wgetTransport httpTransportFlags prog =
   HttpTransport gethttp posthttp posthttpfile puthttpfile True False
   where
     gethttp verbosity uri etag destPath reqHeaders =  do
@@ -503,10 +511,15 @@ wgetTransport prog =
       a = fromMaybe (URIAuth "" "" "") (uriAuthority uri)
 
     runWGet verbosity uri args = do
+        let netrcFlags = case httpTransportFlagsUseNetrc httpTransportFlags of
+              Just False  -> ["--no-netrc"]
+              _           -> []
+
         -- We pass the URI via STDIN because it contains the users' credentials
         -- and sensitive data should not be passed via command line arguments.
         let
-          invocation = (programInvocation prog ("--input-file=-" : args))
+          args' = netrcFlags ++ args
+          invocation = (programInvocation prog ("--input-file=-" : args'))
             { progInvokeInput = Just (uriToString id uri "")
             }
 

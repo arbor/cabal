@@ -185,6 +185,7 @@ projectConfigWithBuilderRepoContext verbosity BuildTimeSettings{..} =
       buildSettingLocalRepos
       buildSettingCacheDir
       buildSettingHttpTransport
+      buildSettingHttpTransportFlags
       (Just buildSettingIgnoreExpiry)
       buildSettingProgPathExtra
 
@@ -210,6 +211,7 @@ projectConfigWithSolverRepoContext verbosity
                     "projectConfigWithSolverRepoContext: projectConfigCacheDir")
                    projectConfigCacheDir)
       (flagToMaybe projectConfigHttpTransport)
+      (flagToMaybe projectConfigHttpTransportFlags)
       (flagToMaybe projectConfigIgnoreExpiry)
       (fromNubList projectConfigProgPathExtra)
 
@@ -314,6 +316,7 @@ resolveBuildTimeSettings verbosity
     buildSettingLocalRepos    = fromNubList projectConfigLocalRepos
     buildSettingCacheDir      = fromFlag    projectConfigCacheDir
     buildSettingHttpTransport = flagToMaybe projectConfigHttpTransport
+    buildSettingHttpTransportFlags = flagToMaybe projectConfigHttpTransportFlags
     buildSettingIgnoreExpiry  = fromFlag    projectConfigIgnoreExpiry
     buildSettingReportPlanningFailure
                               = fromFlag projectConfigReportPlanningFailure
@@ -951,6 +954,9 @@ mplusMaybeT ma mb = do
     Nothing -> mb
     Just x  -> return (Just x)
 
+lookupTransportFlags :: Maybe String -> Maybe HttpTransportFlags -> Maybe HttpTransportFlags
+lookupTransportFlags (Just httpTransport)  fs = find ((== httpTransport) . httpTransportFlagsName) fs
+lookupTransportFlags Nothing               _  = Nothing
 
 -------------------------------------------------
 -- Fetching and reading packages in the project
@@ -988,7 +994,8 @@ fetchAndReadSourcePackages verbosity distDirLayout
     pkgsRemoteTarball <- do
       getTransport <- delayInitSharedResource $
                       configureTransport verbosity progPathExtra
-                                         preferredHttpTransport
+                                         ( lookupTransportFlags preferredHttpTransport
+                                           (flagToMaybe (projectConfigHttpTransportFlags projectConfigBuildOnly)))
       sequence
         [ fetchAndReadSourcePackageRemoteTarball verbosity distDirLayout
                                                  getTransport uri
